@@ -1,7 +1,7 @@
 (function(wat_basics){
 wat_basics.main =
         ["begin",
-         
+
          ["def", "compose",
           ["lambda", ["f", "g"], ["lambda", ["arg"], ["f", ["g", "arg"]]]]],
 

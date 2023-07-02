@@ -48,7 +48,7 @@ wat.VM = function() {
     Apv.prototype.toString = function() { return "[Apv " + to_string(this.cmb) + "]"; };
     function wrap(cmb) { return new Apv(cmb); }; function unwrap(apv) { return apv.cmb; }
     Opv.prototype.wat_combine = function(e, k, f, o) {
-        var xe = make_env(this.e); 
+        var xe = make_env(this.e);
         var pCap = bind(xe, this.p, o);
         if (isCapture(pCap)) return pCap;
         var epCap = bind(xe, this.ep, e);
