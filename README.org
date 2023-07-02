@@ -46,14 +46,13 @@ For now, follow http://axisofeval.blogspot.com/search/label/wat and/or
 https://twitter.com/msimoni for updates.
 ** Implementation
 *** wat.js
-*** Header
+**** Header
 #+begin_src javascript :tangle wat.js
   (function(wat) {
   wat.VM = function() {
 #+end_src
-*** Body
+**** Continuations
 #+begin_src javascript :tangle wat.js
-  /* Continuations */
   function Continuation(fun, next, dbg, e) {
       this.fun = fun; this.next = next; this.dbg = dbg; this.e = e; }
   function isContinuation(x) { return x instanceof Continuation; }
@@ -64,7 +63,9 @@ https://twitter.com/msimoni for updates.
       capture.k = new Continuation(fun, capture.k, dbg, e); }
   function continueFrame(k, f) {
       return k.fun(k.next, f); }
-  /* Evaluation Core */
+#+end_src
+**** Evaluation Core
+#+begin_src javascript :tangle wat.js
   function evaluate(e, k, f, x) {
       if (x && x.wat_eval) return x.wat_eval(e, k, f); else return x; }
   function Sym(name) { this.name = name; }
@@ -92,7 +93,9 @@ https://twitter.com/msimoni for updates.
           return to_string(cons.car);
       }
   }
-  /* Operative & Applicative Combiners */
+#+end_src
+**** Operative & Applicative Combiners
+#+begin_src javascript :tangle wat.js
   function combine(e, k, f, cmb, o) {
       if (cmb && cmb.wat_combine) return cmb.wat_combine(e, k, f, o);
       else return fail("not a combiner: " + to_string(cmb)); }
@@ -136,7 +139,9 @@ https://twitter.com/msimoni for updates.
       }
       return evalArgs(e, null, null, cdr(todo), cons(arg, done));
   }
-  /* Built-in Combiners */
+#+end_src
+**** Built-in Combiners
+#+begin_src javascript :tangle wat.js
   function __Vau() {}; function Def() {}; function Eval() {}
   __Vau.prototype.toString = function() { return "vau"; };
   Def.prototype.toString = function() { return "def"; };
@@ -161,7 +166,9 @@ https://twitter.com/msimoni for updates.
       var x = elt(o, 0); if (isCapture(x)) return x;
       var e = elt(o, 1); if (isCapture(e)) return e;
       return evaluate(e, k, f, x); };
-  /* First-order Control */
+#+end_src
+**** First-order Control
+#+begin_src javascript :tangle wat.js
   function Begin() {}; function If() {}; function __Loop() {}
   function __Catch() {}; function Finally() {}
   Begin.prototype.toString = function() { return "begin"; };
@@ -264,7 +271,9 @@ https://twitter.com/msimoni for updates.
           return res;
       }
   }
-  /* Delimited Control */
+#+end_src
+**** Delimited Control
+#+begin_src javascript :tangle wat.js
   function __PushPrompt() {}; function __TakeSubcont() {}; function __PushSubcont() {}
   __PushPrompt.prototype.wat_combine = function self(e, k, f, o) {
       var prompt = elt(o, 0);
@@ -309,7 +318,9 @@ https://twitter.com/msimoni for updates.
           return res;
       }
   };
-  /* Dynamic Variables */
+#+end_src
+**** Dynamic Variables
+#+begin_src javascript :tangle wat.js
   function DV(val) { this.val = val; }
   function DNew() {}; function DRef() {}; function __DLet() {}
   DNew.prototype.wat_combine = function(e, k, f, o) { return new DV(elt(o, 0)); };
@@ -336,7 +347,9 @@ https://twitter.com/msimoni for updates.
           dv.val = oldVal;
       }
   };
-  /* Objects */
+#+end_src
+**** Objects
+#+begin_src javascript :tangle wat.js
   function Nil() {}; var NIL = new Nil();
   Nil.prototype.toString = function() { return "()"; };
   function Ign() {}; var IGN = new Ign();
@@ -366,7 +379,9 @@ https://twitter.com/msimoni for updates.
   Nil.prototype.wat_match = function(e, rhs) {
       if (rhs !== NIL) return fail("NIL expected, but got: " + to_string(rhs)); };
   Ign.prototype.wat_match = function(e, rhs) {};
-  /* Utilities */
+#+end_src
+**** Utilities
+#+begin_src javascript :tangle wat.js
   var ROOT_PROMPT = new Sym("--root-prompt");
   function push_root_prompt(x) {
       return parse_json_value(["push-prompt", ["quote", ROOT_PROMPT], x]); }
@@ -396,7 +411,9 @@ https://twitter.com/msimoni for updates.
   function to_string(obj) {
       if ((obj !== null) && (obj !== undefined)) return obj.toString();
       else return Object.prototype.toString.call(obj); }
-  /* Parser */
+#+end_src
+**** Parser
+#+begin_src javascript :tangle wat.js
   function parse_json_value(obj) {
       switch(Object.prototype.toString.call(obj)) {
       case "[object String]": return obj === "#ignore" ? IGN : new Sym(obj);
@@ -407,7 +424,9 @@ https://twitter.com/msimoni for updates.
       if (i === -1) return array_to_list(arr.map(parse_json_value));
       else { var front = arr.slice(0, i);
              return array_to_list(front.map(parse_json_value), parse_json_value(arr[i + 1])); } }
-  /* JSNI */
+#+end_src
+**** JSNI
+#+begin_src javascript :tangle wat.js
   function JSFun(jsfun) {
       if (Object.prototype.toString.call(jsfun) !== "[object Function]") return fail("no fun");
       this.jsfun = jsfun; }
@@ -441,7 +460,9 @@ https://twitter.com/msimoni for updates.
           var args = array_to_list(Array.prototype.slice.call(arguments));
           return evaluate(environment, null, null, push_root_prompt(cons(cmb, args)));
       } }
-  /* Primitives */
+#+end_src
+**** Primitives
+#+begin_src javascript :tangle wat.js
   var primitives =
       ["begin",
 
@@ -581,7 +602,9 @@ https://twitter.com/msimoni for updates.
          ["list*", ["list", "js-invoker", ["list", "string", "method"]], "obj", "args"]]],
 
       ];
-  /* Init */
+#+end_src
+**** Init
+#+begin_src javascript :tangle wat.js
   var environment = make_env();
   bind(environment, new Sym("def"), new Def());
   bind(environment, new Sym("begin"), new Begin());
@@ -593,7 +616,7 @@ https://twitter.com/msimoni for updates.
   }
   return { "run": run };
 #+end_src
-*** Footer
+**** Footer
 #+begin_src javascript :tangle wat.js
   }
   })(typeof exports === "undefined" ? this["wat"] = {} : exports);

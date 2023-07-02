@@ -1,7 +1,6 @@
 (function(wat) {
 wat.VM = function() {
 
-/* Continuations */
 function Continuation(fun, next, dbg, e) {
     this.fun = fun; this.next = next; this.dbg = dbg; this.e = e; }
 function isContinuation(x) { return x instanceof Continuation; }
@@ -12,7 +11,7 @@ function captureFrame(capture, fun, dbg, e) {
     capture.k = new Continuation(fun, capture.k, dbg, e); }
 function continueFrame(k, f) {
     return k.fun(k.next, f); }
-/* Evaluation Core */
+
 function evaluate(e, k, f, x) {
     if (x && x.wat_eval) return x.wat_eval(e, k, f); else return x; }
 function Sym(name) { this.name = name; }
@@ -40,7 +39,7 @@ function cons_to_string(cons) {
         return to_string(cons.car);
     }
 }
-/* Operative & Applicative Combiners */
+
 function combine(e, k, f, cmb, o) {
     if (cmb && cmb.wat_combine) return cmb.wat_combine(e, k, f, o);
     else return fail("not a combiner: " + to_string(cmb)); }
@@ -84,7 +83,7 @@ function evalArgs(e, k, f, todo, done) {
     }
     return evalArgs(e, null, null, cdr(todo), cons(arg, done));
 }
-/* Built-in Combiners */
+
 function __Vau() {}; function Def() {}; function Eval() {}
 __Vau.prototype.toString = function() { return "vau"; };
 Def.prototype.toString = function() { return "def"; };
@@ -109,7 +108,7 @@ Eval.prototype.wat_combine = function(e, k, f, o) {
     var x = elt(o, 0); if (isCapture(x)) return x;
     var e = elt(o, 1); if (isCapture(e)) return e;
     return evaluate(e, k, f, x); };
-/* First-order Control */
+
 function Begin() {}; function If() {}; function __Loop() {}
 function __Catch() {}; function Finally() {}
 Begin.prototype.toString = function() { return "begin"; };
@@ -212,7 +211,7 @@ function doCleanup(e, k, f, cleanup, res) {
         return res;
     }
 }
-/* Delimited Control */
+
 function __PushPrompt() {}; function __TakeSubcont() {}; function __PushSubcont() {}
 __PushPrompt.prototype.wat_combine = function self(e, k, f, o) {
     var prompt = elt(o, 0);
@@ -257,7 +256,7 @@ __PushSubcont.prototype.wat_combine = function self(e, k, f, o) {
         return res;
     }
 };
-/* Dynamic Variables */
+
 function DV(val) { this.val = val; }
 function DNew() {}; function DRef() {}; function __DLet() {}
 DNew.prototype.wat_combine = function(e, k, f, o) { return new DV(elt(o, 0)); };
@@ -284,7 +283,7 @@ __DLet.prototype.wat_combine = function self(e, k, f, o) {
         dv.val = oldVal;
     }
 };
-/* Objects */
+
 function Nil() {}; var NIL = new Nil();
 Nil.prototype.toString = function() { return "()"; };
 function Ign() {}; var IGN = new Ign();
@@ -314,7 +313,7 @@ Cons.prototype.wat_match = function(e, rhs) {
 Nil.prototype.wat_match = function(e, rhs) {
     if (rhs !== NIL) return fail("NIL expected, but got: " + to_string(rhs)); };
 Ign.prototype.wat_match = function(e, rhs) {};
-/* Utilities */
+
 var ROOT_PROMPT = new Sym("--root-prompt");
 function push_root_prompt(x) {
     return parse_json_value(["push-prompt", ["quote", ROOT_PROMPT], x]); }
@@ -344,7 +343,7 @@ function reverse_list(list) {
 function to_string(obj) {
     if ((obj !== null) && (obj !== undefined)) return obj.toString();
     else return Object.prototype.toString.call(obj); }
-/* Parser */
+
 function parse_json_value(obj) {
     switch(Object.prototype.toString.call(obj)) {
     case "[object String]": return obj === "#ignore" ? IGN : new Sym(obj);
@@ -355,7 +354,7 @@ function parse_json_array(arr) {
     if (i === -1) return array_to_list(arr.map(parse_json_value));
     else { var front = arr.slice(0, i);
            return array_to_list(front.map(parse_json_value), parse_json_value(arr[i + 1])); } }
-/* JSNI */
+
 function JSFun(jsfun) {
     if (Object.prototype.toString.call(jsfun) !== "[object Function]") return fail("no fun");
     this.jsfun = jsfun; }
@@ -389,7 +388,7 @@ function js_callback(cmb) {
         var args = array_to_list(Array.prototype.slice.call(arguments));
         return evaluate(environment, null, null, push_root_prompt(cons(cmb, args)));
     } }
-/* Primitives */
+
 var primitives =
     ["begin",
 
@@ -529,7 +528,7 @@ var primitives =
        ["list*", ["list", "js-invoker", ["list", "string", "method"]], "obj", "args"]]],
 
     ];
-/* Init */
+
 var environment = make_env();
 bind(environment, new Sym("def"), new Def());
 bind(environment, new Sym("begin"), new Begin());
