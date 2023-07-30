@@ -9,24 +9,24 @@ function Capture(prompt, handler) {
 function isCapture(x) { return x instanceof Capture; }
 function captureFrame(capture, fun, dbg, e) {
     capture.k = new Continuation(fun, capture.k, dbg, e); }
-function continueFrame(k, f) {
-    return k.fun(k.next, f); }
+function continueFrame(k) {
+    return k.fun(k.next); }
 
 function evaluate(e, k, f, x) {
-    if (x && x.wat_eval) return x.wat_eval(e, k, f); else return x; }
+    if (x && x.wat_eval) return x.wat_eval(e, k); else return x; }
 function Sym(name) { this.name = name; }
-Sym.prototype.wat_eval = function(e, k, f) { return lookup(e, this.name); };
+Sym.prototype.wat_eval = function(e, k) { return lookup(e, this.name); };
 Sym.prototype.toString = function() { return this.name; };
 function Cons(car, cdr) { this.car = car; this.cdr = cdr; }
-Cons.prototype.wat_eval = function(e, k, f) {
+Cons.prototype.wat_eval = function(e, k) {
     if (isContinuation(k)) {
-        var op = continueFrame(k, f);
+        var op = continueFrame(k);
     } else {
         var op = evaluate(e, null, null, car(this));
     }
     if (isCapture(op)) {
         var that = this;
-        captureFrame(op, function(k, f) { return that.wat_eval(e, k, f); }, this, e);
+        captureFrame(op, function(k) { return that.wat_eval(e, k); }, this, e);
         return op;
     }
     return combine(e, null, null, op, cdr(this));
@@ -59,13 +59,13 @@ Opv.prototype.toString = function() {
     return "[Opv " + to_string(this.p) + " " + to_string(this.ep) + " " + to_string(this.x) + "]"; };
 Apv.prototype.wat_combine = function(e, k, f, o) {
     if (isContinuation(k)) {
-        var args = continueFrame(k, f);
+        var args = continueFrame(k);
     } else {
         var args = evalArgs(e, null, null, o, NIL);
     }
     if (isCapture(args)) {
         var that = this;
-        captureFrame(args, function(k, f) { return that.wat_combine(e, k, f, o); }, cons(this, o), e);
+        captureFrame(args, function(k) { return that.wat_combine(e, k, f, o); }, cons(this, o), e);
         return args;
     }
     return this.cmb.wat_combine(e, null, null, args);
@@ -73,12 +73,12 @@ Apv.prototype.wat_combine = function(e, k, f, o) {
 function evalArgs(e, k, f, todo, done) {
     if (todo === NIL) { return reverse_list(done); }
     if (isContinuation(k)) {
-        var arg = continueFrame(k, f);
+        var arg = continueFrame(k);
     } else {
         var arg = evaluate(e, null, null, car(todo));
     }
     if (isCapture(arg)) {
-        captureFrame(arg, function(k, f) { return evalArgs(e, k, f, todo, done); }, car(todo), e);
+        captureFrame(arg, function(k) { return evalArgs(e, k, f, todo, done); }, car(todo), e);
         return arg;
     }
     return evalArgs(e, null, null, cdr(todo), cons(arg, done));
@@ -94,12 +94,12 @@ Def.prototype.wat_combine = function self(e, k, f, o) {
     var lhs = elt(o, 0); if (isCapture(lhs)) return lhs;
     var rhs = elt(o, 1); if (isCapture(rhs)) return rhs;
     if (isContinuation(k)) {
-        var val = continueFrame(k, f);
+        var val = continueFrame(k);
     } else {
         var val = evaluate(e, null, null, rhs);
     }
     if (isCapture(val)) {
-        captureFrame(val, function(k, f) { return self(e, k, f, o); }, rhs, e);
+        captureFrame(val, function(k) { return self(e, k, f, o); }, rhs, e);
         return val;
     }
     return bind(e, lhs, val);
@@ -120,12 +120,12 @@ Begin.prototype.wat_combine = function(e, k, f, o) {
     if (o === NIL) return null; else return begin(e, k, f, o); };
 function begin(e, k, f, xs) {
     if (isContinuation(k)) {
-        var res = continueFrame(k, f);
+        var res = continueFrame(k);
     } else {
         var res = evaluate(e, null, null, car(xs));
     }
     if (isCapture(res)) {
-        captureFrame(res, function(k, f) { return begin(e, k, f, xs); }, car(xs), e);
+        captureFrame(res, function(k) { return begin(e, k, f, xs); }, car(xs), e);
         return res;
     }
     var kdr = cdr(xs);
@@ -133,12 +133,12 @@ function begin(e, k, f, xs) {
 }
 If.prototype.wat_combine = function self(e, k, f, o) {
     if (isContinuation(k)) {
-        var test = continueFrame(k, f);
+        var test = continueFrame(k);
     } else {
         var test = evaluate(e, null, null, elt(o, 0));
     }
     if (isCapture(test)) {
-        captureFrame(test, function(k, f) { return self(e, k, f, o); }, elt(o, 0), e);
+        captureFrame(test, function(k) { return self(e, k, f, o); }, elt(o, 0), e);
         return test;
     }
     return evaluate(e, null, null, test ? elt(o, 1) : elt(o, 2));
@@ -147,13 +147,13 @@ __Loop.prototype.wat_combine = function self(e, k, f, o) {
     var first = true; // only continue once
     while (true) {
         if (first && isContinuation(k)) {
-            var res = continueFrame(k, f);
+            var res = continueFrame(k);
         } else {
             var res = evaluate(e, null, null, elt(o, 0));
         }
         first = false;
         if (isCapture(res)) {
-            captureFrame(res, function(k, f) { return self(e, k, f, o); }, elt(o, 0), e);
+            captureFrame(res, function(k) { return self(e, k, f, o); }, elt(o, 0), e);
             return res;
         }
     }
@@ -163,7 +163,7 @@ __Catch.prototype.wat_combine = function self(e, k, f, o) {
     var handler = elt(o, 1);
     try {
         if (isContinuation(k)) {
-            var res = continueFrame(k, f);
+            var res = continueFrame(k);
         } else {
             var res = combine(e, null, null, th, NIL);
         }
@@ -172,7 +172,7 @@ __Catch.prototype.wat_combine = function self(e, k, f, o) {
         var res = combine(e, null, null, unwrap(handler), list(exc));
     }
     if (isCapture(res)) {
-        captureFrame(res, function(k, f) { return self(e, k, f, o); }, th, e);
+        captureFrame(res, function(k) { return self(e, k, f, o); }, th, e);
         return res;
     } else {
         return res;
@@ -183,12 +183,12 @@ Finally.prototype.wat_combine = function self(e, k, f, o) {
     var cleanup = elt(o, 1);
     try {
         if (isContinuation(k)) {
-            var res = continueFrame(k, f);
+            var res = continueFrame(k);
         } else {
             var res = evaluate(e, null, null, prot);
         }
         if (isCapture(res)) {
-            captureFrame(res, function(k, f) { return self(e, k, f, o); }, prot, e);
+            captureFrame(res, function(k) { return self(e, k, f, o); }, prot, e);
         }
     } finally {
         if (isCapture(res)) {
@@ -200,12 +200,12 @@ Finally.prototype.wat_combine = function self(e, k, f, o) {
 };
 function doCleanup(e, k, f, cleanup, res) {
     if (isContinuation(k)) {
-        var fres = continueFrame(k, f);
+        var fres = continueFrame(k);
     } else {
         var fres = evaluate(e, null, null, cleanup);
     }
     if (isCapture(fres)) {
-        captureFrame(fres, function(k, f) { return doCleanup(e, k, f, cleanup, res); }, cleanup, e);
+        captureFrame(fres, function(k) { return doCleanup(e, k, f, cleanup, res); }, cleanup, e);
         return fres;
     } else {
         return res;
@@ -217,7 +217,7 @@ __PushPrompt.prototype.wat_combine = function self(e, k, f, o) {
     var prompt = elt(o, 0);
     var x = elt(o, 1);
     if (isContinuation(k)) {
-        var res = continueFrame(k, f);
+        var res = continueFrame(k);
     } else {
         var res = evaluate(e, null, null, x);
     }
@@ -227,7 +227,7 @@ __PushPrompt.prototype.wat_combine = function self(e, k, f, o) {
             var handler = res.handler;
             return combine(e, null, null, handler, cons(continuation, NIL));
         } else {
-            captureFrame(res, function(k, f) { return self(e, k, f, o); }, x, e);
+            captureFrame(res, function(k) { return self(e, k, f, o); }, x, e);
             return res;
         }
     } else {
@@ -245,12 +245,12 @@ __PushSubcont.prototype.wat_combine = function self(e, k, f, o) {
     var thek = elt(o, 0);
     var thef = elt(o, 1);
     if (isContinuation(k)) {
-        var res = continueFrame(k, f);
+        var res = continueFrame(k);
     } else {
         var res = continueFrame(thek, thef);
     }
     if (isCapture(res)) {
-        captureFrame(res, function(k, f) { return self(e, k, f, o); }, thef, e);
+        captureFrame(res, function(k) { return self(e, k, f, o); }, thef, e);
         return res;
     } else {
         return res;
@@ -269,12 +269,12 @@ __DLet.prototype.wat_combine = function self(e, k, f, o) {
     dv.val = val;
     try {
         if (isContinuation(k)) {
-            var res = continueFrame(k, f);
+            var res = continueFrame(k);
         } else {
             var res = combine(e, null, null, th, NIL);
         }
         if (isCapture(res)) {
-            captureFrame(res, function(k, f) { return self(e, k, f, o); }, th, e);
+            captureFrame(res, function(k) { return self(e, k, f, o); }, th, e);
             return res;
         } else {
             return res;
@@ -325,7 +325,7 @@ function fail(err) {
         throw err;
     });
     var cap = new Capture(ROOT_PROMPT, handler);
-    captureFrame(cap, function(k, f) { throw "never reached"; }, "[error handler stack frame]", {});
+    captureFrame(cap, function(k) { throw "never reached"; }, "[error handler stack frame]", {});
     return cap;
 }
 function list() {
