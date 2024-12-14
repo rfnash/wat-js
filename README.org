@@ -35,56 +35,132 @@ Wat is developed by Manuel Simoni (msimoni@gmail.com).
 </html>
 #+end_example
 *** Node.js
-#+begin_example
-> var wat = require("./wat");
-> var vm = new wat.VM();
-> vm.run(["+", 1, 2]);
-3
-#+end_example
+(require 'ob-js)
+#+begin_src javascript :tangle test-wat.js
+var wat = require("./wat.js");
+var vm = new wat.VM();
+vm.run(["+", 1, 2]);
+#+end_src
 ** More documentation upcoming!
 For now, follow http://axisofeval.blogspot.com/search/label/wat and/or
 https://twitter.com/msimoni for updates.
+** Notes about variable names
+- [[http://axisofeval.blogspot.com/2011/08/notes-on-delimited-continuations.html][The Axis of Eval: Notes on delimited continuations]]
+  - pushPrompt p e: p is a prompt, e is an expression.
+  - withSubCont p f: p is a prompt, f is a function.
+  - pushSubCont k e: k is a continuation, e is an expression.
+- I believe that in cases e is an environment, in which case x is an
+  expression.
+- Evaluator Variable names
+  - e = Environment
+  - x = Expression
+  - f = Function?
+** Types
 ** Implementation
 *** wat.js
-**** Header
+**** CANCELLED Header
 #+begin_src javascript :tangle wat.js
   (function(wat) {
   wat.VM = function() {
 #+end_src
-**** Continuations
+**** TODO Continuations and Frames [0/4]
+- See Alexis King's talk for more about what those are.
+***** TODO =TYPE= Continuation (fun, next, dbg, e)
+- *Continuations are always made by [[id:15147b19-db9a-4f67-aed2-adacb186565a][captureFrame]].*
+- [ ] fun = A function that takes two expressions and returns an ?.
+- next = The expression to evaluate
+- dbg = String to provide an error message for debugging
+- e = The environment.
 #+begin_src javascript :tangle wat.js
   function Continuation(fun, next, dbg, e) {
       this.fun = fun; this.next = next; this.dbg = dbg; this.e = e; }
   function isContinuation(x) { return x instanceof Continuation; }
-  function Capture(prompt, handler) {
-      this.prompt = prompt; this.handler = handler; this.k = null; }
-  function isCapture(x) { return x instanceof Capture; }
-  function captureFrame(capture, fun, dbg, e) {
-      capture.k = new Continuation(fun, capture.k, dbg, e); }
+#+end_src
+***** TODO =FUNC= continueFrame(k, f)
+- k = A continuation
+- [ ] f = ?
+- Returns the result of applying k.fun to k.next and f.
+#+begin_src javascript :tangle wat.js
   function continueFrame(k, f) {
       return k.fun(k.next, f); }
 #+end_src
-**** Evaluation Core
+***** TODO =TYPE= Capture (prompt, handler, k : Continuation)
+- [ ] prompt = ?
+- [ ] handler = ?
+- k = A continuation
+#+begin_src javascript :tangle wat.js
+  function Capture(prompt, handler) {
+      this.prompt = prompt; this.handler = handler; this.k = null; }
+  function isCapture(x) { return x instanceof Capture; }
+#+end_src
+***** TODO =FUNC= captureFrame(capture, fun, dbg, e)
+- Sets capture.k to a new continuation where
+  - fun = fun
+  - next = Old capture.k
+  - dbg = dbg
+  - e = e
+#+begin_src javascript :tangle wat.js
+  function captureFrame(capture, fun, dbg, e) {
+      capture.k = new Continuation(fun, capture.k, dbg, e); }
+#+end_src
+**** TODO Evaluation Core [1/3]
+***** TODO =FUNC= Evaluate(e, k, f, x) [0/1]
+- e = Environment
+- x = Expression to evaluate
+- k = A Continuation
+- [ ] f = ??
 #+begin_src javascript :tangle wat.js
   function evaluate(e, k, f, x) {
-      if (x && x.wat_eval) return x.wat_eval(e, k, f); else return x; }
+      if (x && x.wat_eval)            // If x has its own evaluator
+          return x.wat_eval(e, k, f); // Call it
+      else return x;                  // Otherwise, x evaluates to itself
+  }
+#+end_src
+***** DONE =TYPE= Sym (name)
+- Symbols are wrappers around strings.
+- Symbols evaluate to what they are bound to in the environment.
+#+begin_src javascript :tangle wat.js
   function Sym(name) { this.name = name; }
   Sym.prototype.wat_eval = function(e, k, f) { return lookup(e, this.name); };
   Sym.prototype.toString = function() { return this.name; };
+#+end_src
+***** TODO Cons (A list) [2/3]
+****** DONE =TYPE= Cons (car, cdr)
+- A Cons cell has a car and a cdr.
+#+begin_src javascript :tangle wat.js
   function Cons(car, cdr) { this.car = car; this.cdr = cdr; }
+#+end_src
+****** TODO =FUNC= wat_eval (e, k, f)
+- Parameters
+  - e = Environment
+  - k = A continuation
+  - [ ] f = ?
+- To evaluate a list
+  - [ ] A bunch of special cases for continuation stuff.
+  - Evaluate the head of the list to get the operative.
+  - Combine the operative with its arguments.
+#+begin_src javascript :tangle wat.js
   Cons.prototype.wat_eval = function(e, k, f) {
-      if (isContinuation(k)) {
-          var op = continueFrame(k, f);
-      } else {
-          var op = evaluate(e, null, null, car(this));
+      var op = isContinuation(k) ?             // If k is a continuation
+          continueFrame(k, f)                  // the operator is the result of the continuation
+          : evaluate(e, null, null, car(this)) // Else evaluate head of list to get operative
+      if (isCapture(op)) {                             // If the operator is a Capture
+          var that = this;                             // (Get around variable shadowing)
+          captureFrame(                                // ???
+              op,                                      // The Capture that is the operative
+              function(k, f) {                         // fun = A function that returns
+                  return that.wat_eval(e, k, f); },    //       the result of evaluating the list
+              this,                                    // dbg = The list being evaluated
+              e);                                      // Pass in the dynamic? environment
+          return op;                                   // Return the modified Capture
       }
-      if (isCapture(op)) {
-          var that = this;
-          captureFrame(op, function(k, f) { return that.wat_eval(e, k, f); }, this, e);
-          return op;
-      }
-      return combine(e, null, null, op, cdr(this));
+      return combine(e, null, null, op, cdr(this));    // 'Apply' the operative to its arguments
   };
+#+end_src
+****** DONE Printing
+Lists are printed with their elements separated by spaces, surrounded
+with paranthees.
+#+begin_src javascript :tangle wat.js
   Cons.prototype.toString = function() { return "(" + cons_to_string(this) + ")" };
   function cons_to_string(cons) {
       if (cons.cdr !== NIL) {
@@ -94,60 +170,171 @@ https://twitter.com/msimoni for updates.
       }
   }
 #+end_src
-**** Operative & Applicative Combiners
+**** TODO Operative & Applicative Combiners [0/0]
+- Combiners are what Wat calls functions.
+- Combiners are split into two types:
+  - Operatives do *not* evaluate their arguments
+  - Applicatives do evaluation their arguments
+    - Applicatives are wrappers for an underlying combiner.
+    - They are applied by evaluating their arguments, then passing
+      those to the underlying combiner.
+- In Maru, things are the other way around
+  - Functions evaluate their arguments by default.
+  - A =<fixed>= wraps a function and prevents its arguments from being
+    evaluated.
+***** TODO =FUNC= combine (e, k, f, cmb, o) [0/1]
+- combine 'applies' combiners.
+- e = The environment
+- k = A continuation
+- [ ] f = ?
+- cmb = The combiner to be 'applied'
+- o = A tree of the combiner's arguments.
+- combine just checks that cmb is a combiner, the delegates to cmb's
+  own combine function.
 #+begin_src javascript :tangle wat.js
   function combine(e, k, f, cmb, o) {
-      if (cmb && cmb.wat_combine) return cmb.wat_combine(e, k, f, o);
-      else return fail("not a combiner: " + to_string(cmb)); }
+      if (cmb && cmb.wat_combine)             // Make sure cmb is a combiner
+          return cmb.wat_combine(e, k, f, o); // Delegate to cmb's combine function
+      else
+          return fail("not a combiner: " + to_string(cmb));
+  }
+#+end_src
+***** DONE =TYPE= Opv (p, ep, x, e)
+- =Opv= creates a new operative.
+  - p  = Formal parameters
+  - ep = Formal parameter of dynamic environment
+  - x  = Body of the operative
+  - e  = Static lexical environment of the operative
+- Operatives are printed as [Opv p ep x].
+#+begin_src javascript :tangle wat.js
   function Opv(p, ep, x, e) { this.p = p; this.ep = ep; this.x = x; this.e = e; }
+  Opv.prototype.toString = function() {
+      return "[Opv " + to_string(this.p) + " " + to_string(this.ep) + " " + to_string(this.x) + "]";
+  };
+#+end_src
+***** DONE =TYPE= Apv (cmb)
+- Creates an applicative by wrapping a combiner.
+- cmb = A combiner.
+- Applicatives are printed as [Apv combiner].
+#+begin_src javascript :tangle wat.js
   function Apv(cmb) { this.cmb = cmb; }
   Apv.prototype.toString = function() { return "[Apv " + to_string(this.cmb) + "]"; };
-  function wrap(cmb) { return new Apv(cmb); }; function unwrap(apv) { return apv.cmb; }
+#+end_src
+***** DONE Wrapping and Unwrapping =Apv=
+- =wrap= wraps a combiner with an applicative.
+- =unwrap= takes an applicative and returns the underlying combiner.
+#+begin_src javascript :tangle wat.js
+  function wrap(cmb) { return new Apv(cmb); };
+  function unwrap(apv) { return apv.cmb; }
+#+end_src
+***** TODO =FUNC= Opv.wat_combine (e, k, f, o)
+- =Opv.wat_combine= combines (applies) a operative with its arguments.
+- Parameters
+  - e = A dynamic environment.
+  - k = A continuation
+  - [ ] f = ?
+  - o = A tree of arguments
+- Local variables
+  - xe =
+  - pCap = An environment with the formal parametrs bount to the arguments
+  - epCap = An environment with the formal parameter of the dynamic
+    evironment bound the current dynamic environment.
+- Fields of =Opv=
+  - p = A tree of formal parameters
+  - ep = The formal parameter of the dynamic environment
+  - x = Body of the operative
+  - e = Static lexical environment of the operator.
+#+begin_src javascript :tangle wat.js
   Opv.prototype.wat_combine = function(e, k, f, o) {
-      var xe = make_env(this.e);
-      var pCap = bind(xe, this.p, o);
-      if (isCapture(pCap)) return pCap;
-      var epCap = bind(xe, this.ep, e);
-      if (isCapture(epCap)) return epCap;
-      return evaluate(xe, k, f, this.x);
+      var xe = make_env(this.e);          // Create a new environment to evaluate the operative in
+      var pCap = bind(xe, this.p, o);     // Bind the formal parameters to the arguments
+      if (isCapture(pCap)) return pCap;   // If pCap is a Capture, return it
+      var epCap = bind(xe, this.ep, e);   // Bind the dynamic environment to its formal parameter
+      if (isCapture(epCap)) return epCap; // If eCap is a Capture, return it
+      return evaluate(                    // Evaluate the body of the operator in the new environment.
+          xe,                             // The environment with the operators formal parameters bound
+          k,                              // Pass in k
+          f,                              // Pass in f
+          this.x                          // The body of the operative
+      );
   };
-  Opv.prototype.toString = function() {
-      return "[Opv " + to_string(this.p) + " " + to_string(this.ep) + " " + to_string(this.x) + "]"; };
+#+end_src
+***** TODO =FUNC= Apv.wat_combine (e, k, f, o)
+- =Apv.wat_combine= applies a applicative to its arguments.
+- Parameters
+  - e = A dynamic environment.
+  - k = A continuation
+  - [ ] f = ?
+  - o = A tree of arguments
+#+begin_src javascript :tangle wat.js
   Apv.prototype.wat_combine = function(e, k, f, o) {
-      if (isContinuation(k)) {
-          var args = continueFrame(k, f);
-      } else {
-          var args = evalArgs(e, null, null, o, NIL);
+      var args =                          // Holds the result of evaluating the arguments
+          isContinuation(k) ?             // If k is a continuation,
+          continueFrame(k, f) :           // run the continuation?
+          evalArgs(e, null, null, o, NIL) // otherwise evaluate the arguments
+      if (isCapture(args)) {                             // If args is a Capture
+          var that = this;                               // (Get around variable shadowing)
+          captureFrame(                                  // ???
+              args,                                      // The Capture is the arguments
+              function(k, f) {                           // fun = A function that returns
+                  return that.wat_combine(e, k, f, o);}, //       the relsult op 'applying' the operator
+              cons(this, o),                             // dbg = "(Applicative arguments)"
+              e);                                        // Pass in the dynamic? environment
+
+          return args;                                   // Return the modified Capture
       }
-      if (isCapture(args)) {
-          var that = this;
-          captureFrame(args, function(k, f) { return that.wat_combine(e, k, f, o); }, cons(this, o), e);
-          return args;
-      }
+
+      // Combine the underlying combiner with the evaluated arguments
       return this.cmb.wat_combine(e, null, null, args);
   };
+#+end_src
+***** TODO =FUNC= evalArgs (e, k, f, todo, done)
+- Parameters
+  - e = Environment
+  - k = A Continuation
+  - [ ] f = ?
+  - todo = Arguments that still need to be evaluated
+  - done = Arguments that have been evaluated
+- [ ] Why not swap arg and done in the last return statement so the
+  =reverse_list= in the first return statement isn't needed?
+#+begin_src javascript :tangle wat.js
   function evalArgs(e, k, f, todo, done) {
-      if (todo === NIL) { return reverse_list(done); }
-      if (isContinuation(k)) {
-          var arg = continueFrame(k, f);
-      } else {
-          var arg = evaluate(e, null, null, car(todo));
+      if (todo === NIL) {            // If the last argument has been evaluated
+          return reverse_list(done); // Return the evaluated arguments in the right order.
       }
-      if (isCapture(arg)) {
-          captureFrame(arg, function(k, f) { return evalArgs(e, k, f, todo, done); }, car(todo), e);
-          return arg;
+      if (isContinuation(k)) {                             // If k is a continuation
+          var arg = continueFrame(k, f);                   // Run the continuation?
+      } else {                                             // If k is not a continuation
+          var arg = evaluate(e, null, null, car(todo));    // Evaluate the first unevaluated argument
       }
+      if (isCapture(arg)) {                                // Needed to avoid variable capture
+          captureFrame(                                    // ???
+              arg,                                         // capture
+              function(k, f) {                             // fun
+                  return evalArgs(e, k, f, todo, done); }, // A recursive call to the outer function here
+              car(todo),                                   // dbg = the argument being evaluated
+              e);                                          // Pass in the dynamic environment
+
+          return arg;                                      // What is arg now?
+      }
+
+      // Drop the head of todo as its just been evaluated.
+      // Prepend the evaluated argument to done.
+      // Recurse to process the rest of the arguments
       return evalArgs(e, null, null, cdr(todo), cons(arg, done));
   }
 #+end_src
-**** Built-in Combiners
+**** TODO Built-in Combiners [0/3]
+***** TODO __Vau
 #+begin_src javascript :tangle wat.js
   function __Vau() {}; function Def() {}; function Eval() {}
   __Vau.prototype.toString = function() { return "vau"; };
-  Def.prototype.toString = function() { return "def"; };
-  Eval.prototype.toString = function() { return "eval"; };
   __Vau.prototype.wat_combine = function(e, k, f, o) {
       return new Opv(elt(o, 0), elt(o, 1), elt(o, 2), e); };
+#+end_src
+***** TODO Def
+#+begin_src javascript :tangle wat.js
+  Def.prototype.toString = function() { return "def"; };
   Def.prototype.wat_combine = function self(e, k, f, o) {
       var lhs = elt(o, 0); if (isCapture(lhs)) return lhs;
       var rhs = elt(o, 1); if (isCapture(rhs)) return rhs;
@@ -162,12 +349,16 @@ https://twitter.com/msimoni for updates.
       }
       return bind(e, lhs, val);
   };
+#+end_src
+***** TODO Eval
+#+begin_src javascript :tangle wat.js
+  Eval.prototype.toString = function() { return "eval"; };
   Eval.prototype.wat_combine = function(e, k, f, o) {
       var x = elt(o, 0); if (isCapture(x)) return x;
       var e = elt(o, 1); if (isCapture(e)) return e;
       return evaluate(e, k, f, x); };
 #+end_src
-**** First-order Control
+**** CANCELLED First-order Control
 #+begin_src javascript :tangle wat.js
   function Begin() {}; function If() {}; function __Loop() {}
   function __Catch() {}; function Finally() {}
@@ -272,9 +463,10 @@ https://twitter.com/msimoni for updates.
       }
   }
 #+end_src
-**** Delimited Control
+**** TODO Delimited Control [0/3]
+***** TODO __PushPrompt
 #+begin_src javascript :tangle wat.js
-  function __PushPrompt() {}; function __TakeSubcont() {}; function __PushSubcont() {}
+  function __PushPrompt() {};
   __PushPrompt.prototype.wat_combine = function self(e, k, f, o) {
       var prompt = elt(o, 0);
       var x = elt(o, 1);
@@ -296,6 +488,10 @@ https://twitter.com/msimoni for updates.
           return res;
       }
   };
+#+end_src
+***** TODO __TakeSubcont
+#+begin_src javascript :tangle wat.js
+ function __TakeSubcont() {};
   __TakeSubcont.prototype.wat_combine = function(e, k, f, o) {
       var prompt = elt(o, 0);
       var handler = elt(o, 1);
@@ -303,6 +499,10 @@ https://twitter.com/msimoni for updates.
       captureFrame(cap, function(k, thef) { return combine(e, null, null, thef, NIL); }, this, e);
       return cap;
   };
+ #+end_src
+***** TODO __PushSubcont
+#+begin_src javascript :tangle wat.js
+ function __PushSubcont() {}
   __PushSubcont.prototype.wat_combine = function self(e, k, f, o) {
       var thek = elt(o, 0);
       var thef = elt(o, 1);
@@ -319,7 +519,7 @@ https://twitter.com/msimoni for updates.
       }
   };
 #+end_src
-**** Dynamic Variables
+**** TODO Dynamic Variables
 #+begin_src javascript :tangle wat.js
   function DV(val) { this.val = val; }
   function DNew() {}; function DRef() {}; function __DLet() {}
@@ -348,7 +548,7 @@ https://twitter.com/msimoni for updates.
       }
   };
 #+end_src
-**** Objects
+**** TODO Objects
 #+begin_src javascript :tangle wat.js
   function Nil() {}; var NIL = new Nil();
   Nil.prototype.toString = function() { return "()"; };
@@ -380,7 +580,7 @@ https://twitter.com/msimoni for updates.
       if (rhs !== NIL) return fail("NIL expected, but got: " + to_string(rhs)); };
   Ign.prototype.wat_match = function(e, rhs) {};
 #+end_src
-**** Utilities
+**** TODO Utilities
 #+begin_src javascript :tangle wat.js
   var ROOT_PROMPT = new Sym("--root-prompt");
   function push_root_prompt(x) {
@@ -412,7 +612,7 @@ https://twitter.com/msimoni for updates.
       if ((obj !== null) && (obj !== undefined)) return obj.toString();
       else return Object.prototype.toString.call(obj); }
 #+end_src
-**** Parser
+**** CANCELLED Parser
 #+begin_src javascript :tangle wat.js
   function parse_json_value(obj) {
       switch(Object.prototype.toString.call(obj)) {
@@ -425,7 +625,7 @@ https://twitter.com/msimoni for updates.
       else { var front = arr.slice(0, i);
              return array_to_list(front.map(parse_json_value), parse_json_value(arr[i + 1])); } }
 #+end_src
-**** JSNI
+**** TODO JSNI
 #+begin_src javascript :tangle wat.js
   function JSFun(jsfun) {
       if (Object.prototype.toString.call(jsfun) !== "[object Function]") return fail("no fun");
@@ -461,7 +661,7 @@ https://twitter.com/msimoni for updates.
           return evaluate(environment, null, null, push_root_prompt(cons(cmb, args)));
       } }
 #+end_src
-**** Primitives
+**** CANCELLED Primitives
 #+begin_src javascript :tangle wat.js
   var primitives =
       ["begin",
@@ -603,7 +803,7 @@ https://twitter.com/msimoni for updates.
 
       ];
 #+end_src
-**** Init
+**** TODO Init
 #+begin_src javascript :tangle wat.js
   var environment = make_env();
   bind(environment, new Sym("def"), new Def());
@@ -616,7 +816,7 @@ https://twitter.com/msimoni for updates.
   }
   return { "run": run };
 #+end_src
-**** Footer
+**** CANCELLED Footer
 #+begin_src javascript :tangle wat.js
   }
   })(typeof exports === "undefined" ? this["wat"] = {} : exports);
